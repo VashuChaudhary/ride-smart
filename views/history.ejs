@@ -1,0 +1,63 @@
+<%- include('partials/header') %>
+
+<h2 class="section-title">Your Ride History</h2>
+
+<% if (rides && rides.length > 0) { %>
+    <div class="history-grid" style="grid-template-columns: 1fr; max-width: 800px; margin: 0 auto;">
+        <% rides.forEach(ride => { %>
+            <div class="card" id="ride-<%= ride._id %>" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <div>
+                    <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem;">
+                        <h3 style="color: var(--primary);"><%= ride.selectedProvider.name %> <%= ride.selectedProvider.vehicleType %></h3>
+                        <span style="background: rgba(16, 185, 129, 0.2); color: var(--accent); padding: 0.2rem 0.6rem; border-radius: 12px; font-size: 0.8rem;">
+                            <%= ride.status %>
+                        </span>
+                        <span style="color: var(--text-muted); font-size: 0.85rem;">
+                            <%= new Date(ride.createdAt).toLocaleDateString() %>
+                        </span>
+                    </div>
+                    <p style="font-size: 0.95rem; margin-bottom: 0.3rem;"><i class="fa-solid fa-circle" style="font-size: 0.5rem; color: var(--primary); width: 15px;"></i> <%= ride.fromLocation.address %></p>
+                    <p style="font-size: 0.95rem;"><i class="fa-solid fa-circle" style="font-size: 0.5rem; color: var(--accent); width: 15px;"></i> <%= ride.toLocation.address %></p>
+                </div>
+                <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 0.5rem;">
+                    <button onclick="deleteRide('<%= ride._id %>')" style="background: none; border: none; color: var(--danger); cursor: pointer; font-size: 1rem; margin-bottom: 0.5rem;" title="Delete Ride">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                    <h3 style="color: var(--accent); font-size: 1.5rem;">₹<%= ride.selectedProvider.price %></h3>
+                    <a href="/booking?from=<%= encodeURIComponent(ride.fromLocation.address) %>&to=<%= encodeURIComponent(ride.toLocation.address) %>" class="btn btn-outline" style="padding: 0.4rem 1rem;">Rebook</a>
+                </div>
+            </div>
+        <% }) %>
+    </div>
+<% } else { %>
+    <div style="text-align: center; padding: 4rem; background: var(--bg-card); border-radius: 16px; max-width: 800px; margin: 0 auto;">
+        <i class="fa-solid fa-route" style="font-size: 4rem; color: var(--border-color); margin-bottom: 1.5rem;"></i>
+        <h3>No rides yet</h3>
+        <p style="color: var(--text-muted); margin: 1rem 0 2rem;">Looks like you haven't booked any rides yet.</p>
+        <a href="/" class="btn btn-primary">Book a Ride</a>
+    </div>
+<% } %>
+
+<script>
+    async function deleteRide(id) {
+        if (!confirm('Are you sure you want to delete this ride from your history?')) return;
+        
+        try {
+            const res = await fetch(`/api/ride/${id}`, { method: 'DELETE' });
+            const data = await res.json();
+            if (data.success) {
+                const card = document.getElementById(`ride-${id}`);
+                card.style.opacity = '0';
+                card.style.transform = 'scale(0.95)';
+                setTimeout(() => card.remove(), 300);
+            } else {
+                alert('Failed to delete ride');
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Error deleting ride');
+        }
+    }
+</script>
+
+<%- include('partials/footer') %>

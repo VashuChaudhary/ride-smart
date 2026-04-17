@@ -1,0 +1,488 @@
+<%- include('partials/header') %>
+
+<div class="booking-container">
+    <div class="options-panel">
+        <h3 style="margin-bottom: 1.5rem;">Compare & Book</h3>
+        
+        <div class="form-group" style="position: relative;">
+            <label>Pickup Location</label>
+            <div style="display: flex; gap: 0.5rem;">
+                <input type="text" id="pickup" class="form-control" placeholder="Search pickup location..." autocomplete="off">
+                <button class="btn btn-outline" type="button" onclick="getCurrentLocation()" style="padding: 0 1rem;" title="Use Current Location">
+                    <i class="fa-solid fa-location-crosshairs"></i>
+                </button>
+            </div>
+        </div>
+        <div class="form-group" style="position: relative;">
+            <label>Drop Location</label>
+            <input type="text" id="drop" class="form-control" placeholder="Search destination..." autocomplete="off">
+        </div>
+        
+        <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem;">
+            <button class="btn btn-outline active" style="flex: 1;" onclick="sortBy('price', this)">Cheapest</button>
+            <button class="btn btn-outline" style="flex: 1;" onclick="sortBy('time', this)">Fastest</button>
+        </div>
+
+        <div id="recommendations">
+            <div class="provider-item active" onclick="selectProvider(this)" id="provider-uber-go" data-name="Uber" data-type="Go" data-price="245" data-time="16:45">
+                <div>
+                    <h4 style="margin-bottom: 0.2rem;">Uber Go</h4>
+                    <p class="eta-text" style="font-size: 0.85rem; color: var(--text-muted);">Calculating...</p>
+                </div>
+                <div style="text-align: right;">
+                    <h4 class="accent-price" style="color: var(--accent);">₹--</h4>
+                </div>
+            </div>
+            <div class="provider-item" onclick="selectProvider(this)" id="provider-ola-mini" data-name="Ola" data-type="Mini" data-price="230" data-time="16:47">
+                <div>
+                    <h4 style="margin-bottom: 0.2rem;">Ola Mini</h4>
+                    <p class="eta-text" style="font-size: 0.85rem; color: var(--text-muted);">Calculating...</p>
+                </div>
+                <div style="text-align: right;">
+                    <h4 class="accent-price" style="color: var(--accent);">₹--</h4>
+                </div>
+            </div>
+            <div class="provider-item" onclick="selectProvider(this)" id="provider-rapido-bike" data-name="Rapido" data-type="Bike" data-price="120" data-time="16:30">
+                <div>
+                    <h4 style="margin-bottom: 0.2rem;">Rapido Bike</h4>
+                    <p class="eta-text" style="font-size: 0.85rem; color: var(--text-muted);">Calculating...</p>
+                </div>
+                <div style="text-align: right;">
+                    <h4 class="accent-price" style="color: var(--accent);">₹--</h4>
+                </div>
+            </div>
+            <div class="provider-item" onclick="selectProvider(this)" id="provider-uber-auto" data-name="Uber" data-type="Auto" data-price="180" data-time="16:40">
+                <div>
+                    <h4 style="margin-bottom: 0.2rem;">Uber Auto</h4>
+                    <p class="eta-text" style="font-size: 0.85rem; color: var(--text-muted);">Calculating...</p>
+                </div>
+                <div style="text-align: right;">
+                    <h4 class="accent-price" style="color: var(--accent);">₹--</h4>
+                </div>
+            </div>
+        </div>
+        
+        <div style="display: flex; gap: 1rem; margin-top: 2rem;">
+            <button class="btn btn-primary" style="flex: 1;" onclick="bookRide()">Book Now</button>
+            <button class="btn btn-outline" style="flex: 1;" onclick="scheduleRide()">Schedule</button>
+        </div>
+    </div>
+    <div class="map-panel" id="map" style="background: #e2e8f0;">
+        <!-- Google Maps container -->
+    </div>
+</div>
+
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.css" />
+
+<style>
+    .suggestions-box {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        z-index: 1000;
+        max-height: 200px;
+        overflow-y: auto;
+        box-shadow: 0 10px 15px -3px rgba(0,0,0,0.5);
+    }
+    .suggestion-item {
+        padding: 0.75rem 1rem;
+        cursor: pointer;
+        border-bottom: 1px solid var(--border-color);
+        font-size: 0.9rem;
+    }
+    .suggestion-item:last-child {
+        border-bottom: none;
+    }
+    .suggestion-item:hover {
+        background: var(--primary);
+        color: white;
+    }
+    .leaflet-routing-container {
+        display: none !important;
+    }
+</style>
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.js"></script>
+
+<script>
+    let map;
+    let routingControl;
+    let pickupCoords = null;
+    let dropCoords = null;
+
+    document.addEventListener("DOMContentLoaded", () => {
+        // Initialize Map
+        map = L.map('map').setView([28.6139, 77.2090], 12); // Default to Delhi
+
+        // Standard OpenStreetMap tiles for clear light mode visibility
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors',
+            maxZoom: 19
+        }).addTo(map);
+
+        setupAutocomplete('pickup', true);
+        setupAutocomplete('drop', false);
+
+        // Handle initial params from URL correctly inside DOMContentLoaded
+        const urlParams = new URLSearchParams(window.location.search);
+        const fromParam = urlParams.get('from');
+        const toParam = urlParams.get('to');
+
+        if (fromParam) {
+            document.getElementById('pickup').value = fromParam;
+            geocodeAndSet(fromParam, true);
+        }
+        if (toParam) {
+            document.getElementById('drop').value = toParam;
+            geocodeAndSet(toParam, false);
+        }
+    });
+
+    // Custom Autocomplete using Nominatim API (100% Free)
+    function setupAutocomplete(inputId, isPickup) {
+        const input = document.getElementById(inputId);
+        const suggestionsContainer = document.createElement('div');
+        suggestionsContainer.className = 'suggestions-box';
+        
+        // Append to the input's parent container properly so position:absolute works
+        if (input.parentNode.tagName === 'DIV' && input.parentNode.style.display === 'flex') {
+            input.parentNode.parentNode.appendChild(suggestionsContainer);
+        } else {
+            input.parentNode.appendChild(suggestionsContainer);
+        }
+
+        // Select all text on focus
+        input.addEventListener('focus', function() {
+            this.select();
+        });
+
+        let timeout;
+        input.addEventListener('input', () => {
+            clearTimeout(timeout);
+            const query = input.value;
+            if (query.length < 3) {
+                suggestionsContainer.innerHTML = '';
+                return;
+            }
+            timeout = setTimeout(async () => {
+                try {
+                    // Only append Delhi if no city/state is specified in the query
+                    let searchQuery = query;
+                    const lowQuery = query.toLowerCase();
+                    const hasCity = lowQuery.includes('delhi') || lowQuery.includes('noida') || lowQuery.includes('gurgaon') || 
+                                    lowQuery.includes('ghaziabad') || lowQuery.includes('haryana') || lowQuery.includes('up') || 
+                                    lowQuery.includes('india');
+                    if (!hasCity) {
+                        searchQuery += ', Delhi, India';
+                    }
+                    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=5&countrycodes=in`);
+                    if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+                    const data = await res.json();
+                    
+                    suggestionsContainer.innerHTML = '';
+                    if (data.length === 0) {
+                        const div = document.createElement('div');
+                        div.className = 'suggestion-item';
+                        div.innerText = 'No results found';
+                        suggestionsContainer.appendChild(div);
+                        return;
+                    }
+                    data.forEach(place => {
+                        const div = document.createElement('div');
+                        div.className = 'suggestion-item';
+                        div.innerText = place.display_name;
+                        div.onclick = () => {
+                            input.value = place.display_name;
+                            suggestionsContainer.innerHTML = '';
+                            const coords = L.latLng(place.lat, place.lon);
+                            if (isPickup) pickupCoords = coords;
+                            else dropCoords = coords;
+                            
+                            map.setView(coords, 15);
+                            calculateAndDisplayRoute();
+                        };
+                        suggestionsContainer.appendChild(div);
+                    });
+                } catch(e) { 
+                    console.error("Autocomplete error", e);
+                }
+            }, 300);
+        });
+        
+        document.addEventListener('click', (e) => {
+            if (e.target !== input) suggestionsContainer.innerHTML = '';
+        });
+    }
+
+    async function geocodeAndSet(address, isPickup) {
+        try {
+            let searchQuery = address;
+            const lowAddr = address.toLowerCase();
+            const hasCity = lowAddr.includes('delhi') || lowAddr.includes('noida') || lowAddr.includes('gurgaon') || 
+                            lowAddr.includes('ghaziabad') || lowAddr.includes('haryana') || lowAddr.includes('up') || 
+                            lowAddr.includes('india');
+            if (!hasCity) {
+                searchQuery += ', Delhi, India';
+            }
+            const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=1&countrycodes=in`);
+            if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+            const data = await res.json();
+            if(data[0]) {
+                const coords = L.latLng(data[0].lat, data[0].lon);
+                if (isPickup) pickupCoords = coords;
+                else dropCoords = coords;
+                calculateAndDisplayRoute();
+            }
+        } catch(e) { 
+            console.error("Geocoding error", e);
+        }
+    }
+
+    function getCurrentLocation() {
+        if (!navigator.geolocation) return alert("Geolocation not supported by your browser");
+        
+        const pickupInput = document.getElementById('pickup');
+        pickupInput.value = "Locating...";
+        
+        navigator.geolocation.getCurrentPosition(async (pos) => {
+            const lat = pos.coords.latitude;
+            const lon = pos.coords.longitude;
+            pickupCoords = L.latLng(lat, lon);
+            
+            // Optimization: Update map and start calculation immediately
+            map.setView(pickupCoords, 15);
+            calculateAndDisplayRoute();
+            
+            try {
+                // Reverse geocode in background to fill the input field
+                const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
+                const data = await res.json();
+                pickupInput.value = data.display_name || "Current Location";
+            } catch(e) {
+                pickupInput.value = "Current Location";
+            }
+        }, (error) => {
+            pickupInput.value = "";
+            if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+                alert("Location Blocked: Browsers only allow GPS on mobile if you use HTTPS. Since you are using a local IP, please enter your location manually!");
+            } else {
+                alert("Error: Location permission denied.");
+            }
+        });
+    }
+
+    function calculateAndDisplayRoute() {
+        if (!pickupCoords || !dropCoords) return;
+
+        // Reset prices to calculating state
+        document.querySelectorAll('.accent-price').forEach(el => el.innerText = '...');
+        document.querySelectorAll('.eta-text').forEach(el => el.innerText = 'Calculating...');
+
+        if (routingControl) {
+            routingControl.setWaypoints([pickupCoords, dropCoords]);
+        } else {
+            // Restore default router to prevent script crashes
+            routingControl = L.Routing.control({
+                waypoints: [pickupCoords, dropCoords],
+                routeWhileDragging: false,
+                addWaypoints: false,
+                showAlternatives: false,
+                show: false,
+                lineOptions: {
+                    styles: [{ color: '#6366f1', opacity: 0.8, weight: 5 }]
+                },
+                createMarker: function() { return null; }
+            }).addTo(map);
+
+            routingControl.on('routesfound', function(e) {
+                const distanceKm = e.routes[0].summary.totalDistance / 1000;
+                const timeMinutes = e.routes[0].summary.totalTime / 60;
+                
+                const now = new Date();
+                
+                function calculateProvider(id, baseFare, perKm, perMin, minAway) {
+                    // Calculate Price
+                    let price = Math.round((baseFare + (distanceKm * perKm) + (timeMinutes * perMin)));
+                    price = Math.max(price, baseFare + 20); // Minimum fare logic
+                    
+                    // Calculate ETA
+                    const dropTime = new Date(now.getTime() + (minAway * 60000) + (timeMinutes * 60000));
+                    const formattedDropTime = dropTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    
+                    // Update DOM
+                    const el = document.getElementById(id);
+                    if (el) {
+                        el.dataset.price = price;
+                        el.dataset.rawtime = minAway;
+                        el.dataset.time = formattedDropTime;
+                        el.querySelector('.accent-price').innerText = '₹' + price;
+                        el.querySelector('.eta-text').innerText = `${minAway} min away • Drop at ${formattedDropTime}`;
+                    }
+                }
+
+                // Call for each provider with realistic formulas
+                calculateProvider('provider-rapido-bike', 20, 5, 1, 2);
+                calculateProvider('provider-uber-auto', 25, 9.5, 0.75, 4);
+                calculateProvider('provider-ola-mini', 50, 15, 2, 5);
+                calculateProvider('provider-uber-go', 40, 10, 1, 3);
+
+                // Save search to history
+                const fromVal = document.getElementById('pickup').value;
+                const toVal = document.getElementById('drop').value;
+                if (fromVal && toVal && fromVal !== "Locating...") {
+                    fetch('/api/search', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ fromAddress: fromVal, toAddress: toVal })
+                    }).catch(e => console.error("History error", e));
+                }
+            });
+
+            routingControl.on('routingerror', function(e) {
+                console.error("Routing error:", e);
+                // Clear prices if route fails
+                document.querySelectorAll('.accent-price').forEach(el => el.innerText = '₹--');
+                document.querySelectorAll('.eta-text').forEach(el => el.innerText = 'Route not found');
+            });
+        }
+    }
+    // Handle map size on resize
+    window.addEventListener('resize', () => {
+        if (map) map.invalidateSize();
+    });
+    
+    function sortBy(criteria, btnElement) {
+        // Update active button state
+        const buttons = document.querySelectorAll('.options-panel > div:nth-child(4) > button');
+        buttons.forEach(b => b.classList.remove('active'));
+        if (btnElement) {
+            btnElement.classList.add('active');
+        } else if (event && event.target) {
+            event.target.classList.add('active');
+        }
+
+        const container = document.getElementById('recommendations');
+        const items = Array.from(container.querySelectorAll('.provider-item'));
+        
+        items.sort((a, b) => {
+            if (criteria === 'price') {
+                const priceA = Number(a.dataset.price) || 9999;
+                const priceB = Number(b.dataset.price) || 9999;
+                return priceA - priceB;
+            } else if (criteria === 'time') {
+                const timeA = Number(a.dataset.rawtime) || 9999;
+                const timeB = Number(b.dataset.rawtime) || 9999;
+                return timeA - timeB;
+            }
+            return 0;
+        });
+
+        // Clear and append sorted items
+        container.innerHTML = '';
+        items.forEach(item => container.appendChild(item));
+    }
+
+    function selectProvider(element) {
+        document.querySelectorAll('.provider-item').forEach(el => el.classList.remove('active'));
+        element.classList.add('active');
+    }
+    
+    async function bookRide(isSchedule = false) {
+        const from = document.getElementById('pickup').value;
+        const to = document.getElementById('drop').value;
+        
+        if (!from || !to) {
+            alert('Please enter pickup and drop locations');
+            return;
+        }
+
+        const activeProvider = document.querySelector('.provider-item.active');
+        if (!activeProvider) {
+            alert('Please select a ride provider');
+            return;
+        }
+
+        const providerData = {
+            name: activeProvider.dataset.name,
+            vehicleType: activeProvider.dataset.type,
+            price: Number(activeProvider.dataset.price),
+            estimatedTime: activeProvider.dataset.time
+        };
+
+        const rideData = {
+            fromLocation: { address: from, lat: 0, lng: 0 },
+            toLocation: { address: to, lat: 0, lng: 0 },
+            selectedProvider: providerData,
+            status: isSchedule ? 'scheduled' : 'completed'
+        };
+
+        if (isSchedule) {
+            const tmr = new Date();
+            tmr.setDate(tmr.getDate() + 1);
+            rideData.scheduledFor = tmr;
+        }
+
+        try {
+            // Book ride
+            const response = await fetch('/api/book', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(rideData)
+            });
+
+            const result = await response.json();
+            if (result.success) {
+                if (isSchedule) {
+                    alert('Ride scheduled successfully!');
+                    window.location.href = '/history';
+                } else {
+                    const provider = activeProvider.dataset.name;
+                    const confirmed = confirm(`Booking saved to history! Redirecting to ${provider} to finalize your ride...`);
+                    
+                    if (confirmed) {
+                        let deepLink = "";
+                        const pLat = pickupCoords.lat, pLng = pickupCoords.lng;
+                        const dLat = dropCoords.lat, dLng = dropCoords.lng;
+
+                        if (provider.toLowerCase() === 'uber') {
+                            deepLink = `https://m.uber.com/ul/?action=setPickup&pickup[latitude]=${pLat}&pickup[longitude]=${pLng}&dropoff[latitude]=${dLat}&dropoff[longitude]=${dLng}`;
+                        } else if (provider.toLowerCase() === 'ola') {
+                            deepLink = `olacabs://app/launch?pickup_lat=${pLat}&pickup_lng=${pLng}&drop_lat=${dLat}&drop_lng=${dLng}`;
+                        } else if (provider.toLowerCase() === 'rapido') {
+                            // Forcefully open the Main Launcher activity of the Rapido app
+                            deepLink = `intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.rapido.passenger;end`;
+                        }
+                        // Fallback logic for Ola/Rapido if deep links fail on desktop
+                        if (deepLink) {
+                            window.location.href = deepLink;
+                            // Small timeout to redirect to history if app didn't open
+                            setTimeout(() => { window.location.href = '/history'; }, 2000);
+                        } else {
+                            window.location.href = '/history';
+                        }
+                    } else {
+                        window.location.href = '/history';
+                    }
+                }
+            } else {
+                alert('Failed to book ride');
+            }
+        } catch (error) {
+            console.error(error);
+            alert('Error connecting to server');
+        }
+    }
+    
+    function scheduleRide() {
+        bookRide(true);
+    }
+</script>
+
+<%- include('partials/footer') %>

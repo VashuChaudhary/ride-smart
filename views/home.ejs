@@ -1,0 +1,197 @@
+<%- include('partials/header') %>
+
+<div class="hero">
+    <h1>Find the Best Ride, Every Time.</h1>
+    <p style="color: var(--text-muted); font-size: 1.2rem; margin-bottom: 2rem;">Compare prices across Uber, Ola, and Rapido instantly.</p>
+</div>
+
+<form class="search-box" action="/booking" method="GET">
+    <div class="form-group" style="margin: 0; position: relative;">
+        <label><i class="fa-solid fa-location-dot" style="color: var(--primary);"></i> Pickup Location</label>
+        <div style="display: flex; gap: 0.5rem;">
+            <input type="text" name="from" id="pickup" class="form-control" placeholder="Search pickup location" required autocomplete="off">
+            <button class="btn btn-outline" type="button" onclick="getCurrentLocation()" style="padding: 0 1rem;" title="Use Current Location">
+                <i class="fa-solid fa-location-crosshairs"></i>
+            </button>
+        </div>
+    </div>
+    <div class="form-group" style="margin: 0; position: relative;">
+        <label><i class="fa-solid fa-map-pin" style="color: var(--accent);"></i> Drop Location</label>
+        <input type="text" name="to" id="drop" class="form-control" placeholder="Search drop location" required autocomplete="off">
+    </div>
+    <button type="submit" class="btn btn-primary" style="height: 45px;">Compare Rides</button>
+</form>
+
+<% if (recentSearches && recentSearches.length > 0) { %>
+    <h2 class="section-title">Recent Searches</h2>
+    <div class="history-grid">
+        <% recentSearches.forEach(search => { %>
+            <div class="card">
+                <p><strong>From:</strong> <%= search.fromAddress %></p>
+                <p><strong>To:</strong> <%= search.toAddress %></p>
+                <a href="/booking?from=<%= encodeURIComponent(search.fromAddress) %>&to=<%= encodeURIComponent(search.toAddress) %>" class="btn btn-outline" style="display: inline-block; margin-top: 1rem; font-size: 0.9rem;">Search Again</a>
+            </div>
+        <% }) %>
+    </div>
+<% } %>
+
+<% if (recentRides && recentRides.length > 0) { %>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 3rem; margin-bottom: 1.5rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
+        <h2 style="margin: 0; font-size: 1.5rem;">Recent Rides</h2>
+        <a href="/history" class="btn btn-outline" style="padding: 0.4rem 1rem; font-size: 0.85rem;">View All</a>
+    </div>
+    <div class="history-grid">
+        <% recentRides.forEach(ride => { %>
+            <div class="card" id="ride-<%= ride._id %>">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 1rem;">
+                    <span style="color: var(--primary); font-weight: bold;"><%= ride.selectedProvider.name %> <%= ride.selectedProvider.vehicleType %></span>
+                    <div style="display: flex; align-items: center; gap: 0.75rem;">
+                        <span style="color: var(--accent);">₹<%= ride.selectedProvider.price %></span>
+                        <button onclick="deleteRide('<%= ride._id %>')" style="background: none; border: none; color: var(--danger); cursor: pointer; font-size: 1rem;" title="Delete Ride">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    </div>
+                </div>
+                <p style="font-size: 0.9rem; margin-bottom: 0.5rem;"><i class="fa-solid fa-circle" style="font-size: 0.5rem; color: var(--primary);"></i> <%= ride.fromLocation.address %></p>
+                <p style="font-size: 0.9rem;"><i class="fa-solid fa-circle" style="font-size: 0.5rem; color: var(--accent);"></i> <%= ride.toLocation.address %></p>
+                <button class="btn btn-outline" style="width: 100%; margin-top: 1rem;" onclick="rebook('<%= encodeURIComponent(ride.fromLocation.address) %>', '<%= encodeURIComponent(ride.toLocation.address) %>')">Rebook</button>
+            </div>
+        <% }) %>
+    </div>
+<% } %>
+
+<style>
+    .suggestions-box {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        z-index: 1000;
+        max-height: 200px;
+        overflow-y: auto;
+        box-shadow: 0 10px 15px -3px rgba(0,0,0,0.5);
+    }
+    .suggestion-item {
+        padding: 0.75rem 1rem;
+        cursor: pointer;
+        border-bottom: 1px solid var(--border-color);
+        font-size: 0.9rem;
+    }
+    .suggestion-item:last-child {
+        border-bottom: none;
+    }
+    .suggestion-item:hover {
+        background: var(--primary);
+        color: white;
+    }
+</style>
+
+<script>
+    document.addEventListener("DOMContentLoaded", () => {
+        setupAutocomplete('pickup');
+        setupAutocomplete('drop');
+    });
+
+    function setupAutocomplete(inputId) {
+        const input = document.getElementById(inputId);
+        const suggestionsContainer = document.createElement('div');
+        suggestionsContainer.className = 'suggestions-box';
+        
+        // Append to the input's parent container
+        if (input.parentNode.tagName === 'DIV' && input.parentNode.style.display === 'flex') {
+            input.parentNode.parentNode.appendChild(suggestionsContainer);
+        } else {
+            input.parentNode.appendChild(suggestionsContainer);
+        }
+
+        // Select all text on focus
+        input.addEventListener('focus', function() {
+            this.select();
+        });
+
+        let timeout;
+        input.addEventListener('input', () => {
+            clearTimeout(timeout);
+            const query = input.value;
+            if (query.length < 3) {
+                suggestionsContainer.innerHTML = '';
+                return;
+            }
+            timeout = setTimeout(async () => {
+                try {
+                    const searchQuery = query.toLowerCase().includes('delhi') ? query : query + ', Delhi, India';
+                    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=5&countrycodes=in`);
+                    const data = await res.json();
+                    
+                    suggestionsContainer.innerHTML = '';
+                    data.forEach(place => {
+                        const div = document.createElement('div');
+                        div.className = 'suggestion-item';
+                        div.innerText = place.display_name;
+                        div.onclick = () => {
+                            input.value = place.display_name;
+                            suggestionsContainer.innerHTML = '';
+                        };
+                        suggestionsContainer.appendChild(div);
+                    });
+                } catch(e) { console.error("Autocomplete error", e); }
+            }, 500);
+        });
+        
+        document.addEventListener('click', (e) => {
+            if (e.target !== input) suggestionsContainer.innerHTML = '';
+        });
+    }
+
+    function getCurrentLocation() {
+        if (!navigator.geolocation) return alert("Geolocation not supported by your browser");
+        
+        const pickupInput = document.getElementById('pickup');
+        pickupInput.value = "Locating...";
+        
+        navigator.geolocation.getCurrentPosition(async (pos) => {
+            const lat = pos.coords.latitude;
+            const lon = pos.coords.longitude;
+            
+            try {
+                const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
+                const data = await res.json();
+                pickupInput.value = data.display_name || "Current Location";
+            } catch(e) {
+                pickupInput.value = "Current Location";
+            }
+        }, () => {
+            pickupInput.value = "";
+            alert("Error: Location permission denied.");
+        });
+    }
+
+    function rebook(from, to) {
+        window.location.href = `/booking?from=${from}&to=${to}`;
+    }
+
+    async function deleteRide(id) {
+        if (!confirm('Are you sure you want to delete this ride from your history?')) return;
+        
+        try {
+            const res = await fetch(`/api/ride/${id}`, { method: 'DELETE' });
+            const data = await res.json();
+            if (data.success) {
+                const card = document.getElementById(`ride-${id}`);
+                card.style.opacity = '0';
+                card.style.transform = 'scale(0.9)';
+                setTimeout(() => card.remove(), 300);
+            } else {
+                alert('Failed to delete ride');
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Error deleting ride');
+        }
+    }
+</script>
+
+<%- include('partials/footer') %>

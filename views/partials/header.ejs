@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartRide - Compare & Book Cabs</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <a href="/" class="logo">
+            <i class="fa-solid fa-car-side"></i> Smart<span>Ride</span>
+        </a>
+        <div class="nav-links">
+            <% if (user) { %>
+                <a href="/" class="desktop-only">Home</a>
+                <a href="/booking" class="desktop-only">Book</a>
+                <a href="/history" class="desktop-only">History</a>
+                <div style="display: flex; align-items: center; gap: 0.5rem; margin-left: 1rem;">
+                    <a href="/profile" style="display: flex; align-items: center; color: var(--text-primary);">
+                        <% if (user.avatar) { %>
+                            <img src="<%= user.avatar %>" alt="avatar" style="width: 30px; height: 30px; border-radius: 50%;">
+                        <% } else { %>
+                            <i class="fa-solid fa-user-circle" style="font-size: 1.5rem;"></i>
+                        <% } %>
+                    </a>
+                    <a href="/auth/logout" class="btn btn-outline" style="padding: 0.4rem 1rem; margin-left: 0.5rem;">Logout</a>
+                </div>
+            <% } else { %>
+                <a href="/auth/login" class="btn btn-outline">Login</a>
+                <a href="/auth/signup" class="btn btn-primary">Sign Up</a>
+            <% } %>
+        </div>
+    </nav>
+    <div class="container">
