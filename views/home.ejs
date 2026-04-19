@@ -5,7 +5,7 @@
     <p style="color: var(--text-muted); font-size: 1.2rem; margin-bottom: 2rem;">Compare prices across Uber, Ola, and Rapido instantly.</p>
 </div>
 
-<form class="search-box" action="/booking" method="GET">
+<form class="search-box" onsubmit="submitSearchForm(event)">
     <div class="form-group" style="margin: 0; position: relative;">
         <label><i class="fa-solid fa-location-dot" style="color: var(--primary);"></i> Pickup Location</label>
         <div style="display: flex; gap: 0.5rem;">
@@ -90,6 +90,9 @@
 </style>
 
 <script>
+    let pickupLat = null, pickupLng = null;
+    let dropLat = null, dropLng = null;
+
     document.addEventListener("DOMContentLoaded", () => {
         setupAutocomplete('pickup');
         setupAutocomplete('drop');
@@ -133,12 +136,15 @@
                         div.innerText = place.display_name;
                         div.onclick = () => {
                             input.value = place.display_name;
+                            input.dataset.lastVal = place.display_name;
+                            if (inputId === 'pickup') { pickupLat = place.lat; pickupLng = place.lon; }
+                            else if (inputId === 'drop') { dropLat = place.lat; dropLng = place.lon; }
                             suggestionsContainer.innerHTML = '';
                         };
                         suggestionsContainer.appendChild(div);
                     });
                 } catch(e) { console.error("Autocomplete error", e); }
-            }, 500);
+            }, 1000);
         });
         
         document.addEventListener('click', (e) => {
@@ -160,8 +166,12 @@
                 const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
                 const data = await res.json();
                 pickupInput.value = data.display_name || "Current Location";
+                pickupLat = lat;
+                pickupLng = lon;
             } catch(e) {
                 pickupInput.value = "Current Location";
+                pickupLat = lat;
+                pickupLng = lon;
             }
         }, () => {
             pickupInput.value = "";
@@ -192,6 +202,30 @@
             alert('Error deleting ride');
         }
     }
+
+    function submitSearchForm(e) {
+        e.preventDefault();
+        const from = document.getElementById('pickup').value;
+        const to = document.getElementById('drop').value;
+        
+        // Reset coordinates if user manually changed the text after selecting a suggestion
+        if (from !== document.getElementById('pickup').dataset.lastVal) { pickupLat = null; pickupLng = null; }
+        if (to !== document.getElementById('drop').dataset.lastVal) { dropLat = null; dropLng = null; }
+
+        if (from && to) {
+            let url = `/booking?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
+            if (pickupLat && pickupLng) url += `&pLat=${pickupLat}&pLng=${pickupLng}`;
+            if (dropLat && dropLng) url += `&dLat=${dropLat}&dLng=${dropLng}`;
+            window.location.href = url;
+        }
+    }
+    
+    // Track last value to invalidate coordinates if text is modified manually
+    document.getElementById('pickup').addEventListener('input', function() { this.dataset.lastVal = this.value; });
+    document.getElementById('drop').addEventListener('input', function() { this.dataset.lastVal = this.value; });
+    
+    // Update dataset on autocomplete select
+    const originalSetupAutocomplete = setupAutocomplete;
 </script>
 
 <%- include('partials/footer') %>

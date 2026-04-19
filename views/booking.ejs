@@ -135,14 +135,43 @@
         const fromParam = urlParams.get('from');
         const toParam = urlParams.get('to');
 
-        if (fromParam) {
-            document.getElementById('pickup').value = fromParam;
-            geocodeAndSet(fromParam, true);
-        }
-        if (toParam) {
-            document.getElementById('drop').value = toParam;
-            geocodeAndSet(toParam, false);
-        }
+        const pLat = urlParams.get('pLat');
+        const pLng = urlParams.get('pLng');
+        const dLat = urlParams.get('dLat');
+        const dLng = urlParams.get('dLng');
+
+        const loadInitialRoutes = async () => {
+            let pickupDone = false;
+            let dropDone = false;
+
+            if (fromParam) {
+                document.getElementById('pickup').value = fromParam;
+                if (pLat && pLng) {
+                    pickupCoords = L.latLng(pLat, pLng);
+                    pickupDone = true;
+                } else {
+                    await geocodeAndSet(fromParam, true);
+                    pickupDone = true;
+                }
+            }
+            if (toParam) {
+                document.getElementById('drop').value = toParam;
+                if (dLat && dLng) {
+                    dropCoords = L.latLng(dLat, dLng);
+                    dropDone = true;
+                } else {
+                    if (fromParam && !(pLat && pLng)) await new Promise(r => setTimeout(r, 1100));
+                    await geocodeAndSet(toParam, false);
+                    dropDone = true;
+                }
+            }
+            
+            // If both were passed via coordinates directly from home screen, manually trigger route display
+            if (pickupDone && dropDone && pickupCoords && dropCoords) {
+                calculateAndDisplayRoute();
+            }
+        };
+        loadInitialRoutes();
     });
 
     // Custom Autocomplete using Nominatim API (100% Free)
@@ -213,7 +242,7 @@
                 } catch(e) { 
                     console.error("Autocomplete error", e);
                 }
-            }, 300);
+            }, 1000);
         });
         
         document.addEventListener('click', (e) => {
